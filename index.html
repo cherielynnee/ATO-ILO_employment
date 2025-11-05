@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>% of Female Employees by Industry</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; margin: 40px; }
+  .axis-label { font-size: 14px; font-weight: bold; }
+  #controls { margin-bottom: 20px; }
+  #tooltip {
+    position: absolute; opacity: 0;
+    background: rgba(255,255,255,0.95);
+    border: 1px solid #ccc; padding: 8px; border-radius: 4px;
+    font-size: 12px; pointer-events: none;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  }
+  .legend text { font-size: 13px; }
+  input[type="range"] { vertical-align: middle; }
+  #yearValue { font-weight: bold; margin-left: 8px; }
+</style>
+</head>
+<body>
+<h2>% of Female Employees by Industry</h2>
+
+<div id="controls">
+  Year:
+  <input type="range" id="yearSlider" step="1">
+  <span id="yearValue"></span>
+  &nbsp;&nbsp;
+  Level:
+  <select id="levelSelect"></select>
+</div>
+
+<div id="chart"></div>
+<div id="tooltip"></div>
+
+<script>
+const margin = { top: 100, right: 150, bottom: 60, left: 250 },
+      width = 1000 - margin.left - margin.right,
+      height = 600 - margin.top - margin.bottom;
+
+const svg = d3.select("#chart")
+  .append("svg")
+  .attr("width", width + margin.left + margin.right)
+  .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+  .attr("transform", `translate(${margin.left},${margin.top})`);
+
+const x = d3.scaleLinear().domain([0, 1]).range([0, width]);
+const y = d3.scaleBand().range([height, 0]).padding(0.1);
+const color = d3.scaleOrdinal(d3.schemeTableau10);
+
+svg.append("g").attr("class", "x-axis").attr("transform", `translate(0,0)`);
+svg.append("g").attr("class", "y-axis");
+
+svg.append("text")
+  .attr("class", "axis-label")
+  .attr("x", width / 2).attr("y", -40)
+  .style("text-anchor", "middle")
+  .text("% of Female Employees");
+
+svg.append("text")
+  .attr("class", "axis-label")
+  .attr("x", -margin.left + 10).attr("y", -20)
+  .style("text-anchor", "start")
+  .text("Activity Code and Activity");
+
+// Transport-related activities (only names)
+const transportActivities = new Set([
+  "Motor vehicles, trailers and semi-trailers",
+  "Other transport equipment",
+  "Motor vehicles",
+  "Automobile bodies, trailers and semi-trailers",
+  "Parts and accessories for motor vehicles",
+  "Building of ships and boats",
+  "Railway locomotives and rolling stock",
+  "Air and spacecraft and related machinery",
+  "Military fighting vehicles",
+  "Transport equipment n.e.c.",
+  "Building of ships and floating structures",
+  "Building of pleasure and sporting boats",
+  "Motorcycles",
+  "Bicycles and invalid carriages",
+  "Other transport equipment n.e.c.",
+  "Repair of transport equip., excl. motor vehicles"
+]);
+
+d3.csv("merged_employees.csv").then(data => {
+  data.forEach(d => {
+    d["% of female employees"] = +d["% of female employees"];
+    d["Number of female employees"] = +d["Number of female employees"];
+  });
+
+  const years = [...new Set(data.map(d => d.Year))].sort();
+  const levels = [...new Set(data.map(d => d.Level))].sort();
+  const continents = [...new Set(data.map(d => d.Continent))];
+
+  const yearSlider = d3.select("#yearSlider");
+  const yearValue = d3.select("#yearValue");
+
+  yearSlider.attr("min", d3.min(years)).attr("max", d3.max(years)).attr("value", d3.min(years));
+  yearValue.text(d3.min(years));
+
+  d3.select("#levelSelect")
+    .selectAll("option")
+    .data(levels)
+    .join("option")
+    .attr("value", d => d)
+    .text(d => d);
+
+  const legend = svg.append("g")
+    .attr("class", "legend")
+    .attr("transform", `translate(${width + 100}, 0)`);
+
+  continents.forEach((continent, i) => {
+    const yPos = i * 25;
+    legend.append("circle").attr("cx", 0).attr("cy", yPos).attr("r", 7).attr("fill", color(continent));
+    legend.append("text").attr("x", 15).attr("y", yPos + 4).text(continent);
+  });
+
+  function updateChart(selectedYear, selectedLevel) {
+    const filteredData = data.filter(d => d.Year == selectedYear && d.Level == selectedLevel);
+
+    const avgByActivity = d3.rollup(filteredData, v => d3.mean(v, d => d["% of female employees"]), d => d.Activity);
+
+    const orderedActivities = Array.from(avgByActivity).sort((a,b)=>a[1]-b[1]).map(d=>d[0]);
+    y.domain(orderedActivities);
+    const dynamicHeight = Math.max(400, orderedActivities.length*25);
+    y.range([dynamicHeight, 0]);
+    d3.select("#chart svg").attr("height", dynamicHeight + margin.top + margin.bottom);
+
+    svg.select(".x-axis").transition().duration(750).call(d3.axisTop(x).tickFormat(d3.format(".0%")));
+
+    svg.select(".y-axis")
+      .transition().duration(750)
+      .call(d3.axisLeft(y).tickFormat(activity => {
+        const match = filteredData.find(d=>d.Activity===activity);
+        return match ? `${match.ActivityCode} ${activity}` : activity;
+      }))
+      .selectAll("text")
+      .attr("fill", d => {
+        // remove code at start
+        const nameOnly = d.replace(/^\d+\s+/,'');
+        return transportActivities.has(nameOnly) ? "red" : "black";
+      })
+      .attr("font-weight", d => {
+        const nameOnly = d.replace(/^\d+\s+/,'');
+        return transportActivities.has(nameOnly) ? "bold" : "normal";
+      });
+
+    const circles = svg.selectAll("circle.data-point").data(filteredData, d => d.Country+d.Activity);
+
+    circles.join(
+      enter => enter.append("circle")
+        .attr("class", "data-point")
+        .attr("cx", d=>x(d["% of female employees"]))
+        .attr("cy", d=>y(d.Activity)+y.bandwidth()/2)
+        .attr("r", d=>Math.sqrt(d["Number of female employees"])/50)
+        .attr("fill", d=>color(d.Continent))
+        .attr("opacity", 0.7)
+        .on("mouseover", (event,d)=>{
+          d3.select("#tooltip").style("opacity",1)
+            .html(`<strong>${d.Country}</strong><br>${d.Activity}<br>% Female: ${(d["% of female employees"]*100).toFixed(1)}%<br>Female Employees: ${d["Number of female employees"].toLocaleString()}`);
+        })
+        .on("mousemove",(event)=>{
+          d3.select("#tooltip").style("left",(event.pageX+10)+"px").style("top",(event.pageY-28)+"px");
+        })
+        .on("mouseout",()=>d3.select("#tooltip").style("opacity",0)),
+      update => update.transition().duration(750)
+        .attr("cx", d=>x(d["% of female employees"]))
+        .attr("cy", d=>y(d.Activity)+y.bandwidth()/2)
+        .attr("r", d=>Math.sqrt(d["Number of female employees"])/50)
+        .attr("fill", d=>color(d.Continent)),
+      exit => exit.transition().duration(500).attr("r",0).remove()
+    );
+  }
+
+  yearSlider.on("input", function(){
+    const year = +this.value;
+    yearValue.text(year);
+    updateChart(year, d3.select("#levelSelect").property("value"));
+  });
+
+  d3.select("#levelSelect").on("change", function(){
+    updateChart(+yearSlider.property("value"), this.value);
+  });
+
+  updateChart(+yearSlider.property("value"), d3.select("#levelSelect").property("value"));
+});
+</script>
+</body>
+</html>
