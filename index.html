@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>% of Female Employees by Industry</title>
+<title>% of Female Employees by Activity</title>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
   body { font-family: Arial, sans-serif; margin: 40px; }
@@ -22,7 +22,7 @@
 </style>
 </head>
 <body>
-<h2>% of Female Employees by Activity</h2>
+<h2>% of Female Employees by Industry</h2>
 
 <div id="controls">
   Year:
@@ -31,12 +31,16 @@
   &nbsp;&nbsp;
   Level:
   <select id="levelSelect"></select>
+  &nbsp;&nbsp;
+  <label>
+    <input type="checkbox" id="transportFilter"> Show only transport-related activities
+  </label>
 </div>
 
 <div style="margin-top: 8px; font-size: 13px;">
      <span style="color: red; font-weight: bold;">Note: Transport-related activity are in bold red text</span>.
 </div>
-  
+
 <div id="chart"></div>
 <div id="tooltip"></div>
 
@@ -125,13 +129,18 @@ d3.csv("merged_employees.csv").then(data => {
   });
 
   function updateChart(selectedYear, selectedLevel) {
-    const filteredData = data.filter(d => d.Year == selectedYear && d.Level == selectedLevel);
+    let filteredData = data.filter(d => d.Year == selectedYear && d.Level == selectedLevel);
+
+    const showTransportOnly = d3.select("#transportFilter").property("checked");
+    if (showTransportOnly) {
+      filteredData = filteredData.filter(d => transportActivities.has(d.Activity));
+    }
 
     const avgByActivity = d3.rollup(filteredData, v => d3.mean(v, d => d["% of female employees"]), d => d.Activity);
 
     const orderedActivities = Array.from(avgByActivity).sort((a,b)=>a[1]-b[1]).map(d=>d[0]);
     y.domain(orderedActivities);
-    const dynamicHeight = Math.max(400, orderedActivities.length*25);
+    const dynamicHeight = Math.max(400, orderedActivities.length * 25);
     y.range([dynamicHeight, 0]);
     d3.select("#chart svg").attr("height", dynamicHeight + margin.top + margin.bottom);
 
@@ -140,55 +149,73 @@ d3.csv("merged_employees.csv").then(data => {
     svg.select(".y-axis")
       .transition().duration(750)
       .call(d3.axisLeft(y).tickFormat(activity => {
-        const match = filteredData.find(d=>d.Activity===activity);
+        const match = filteredData.find(d => d.Activity === activity);
         return match ? `${match.ActivityCode} ${activity}` : activity;
       }))
       .selectAll("text")
       .attr("fill", d => {
-        // remove code at start
-        const nameOnly = d.replace(/^\d+\s+/,'');
+        const nameOnly = d.replace(/^\d+\s+/, '');
         return transportActivities.has(nameOnly) ? "red" : "black";
       })
       .attr("font-weight", d => {
-        const nameOnly = d.replace(/^\d+\s+/,'');
+        const nameOnly = d.replace(/^\d+\s+/, '');
         return transportActivities.has(nameOnly) ? "bold" : "normal";
       });
 
-    const circles = svg.selectAll("circle.data-point").data(filteredData, d => d.Country+d.Activity);
+    const circles = svg.selectAll("circle.data-point").data(filteredData, d => d.Country + d.Activity);
 
     circles.join(
       enter => enter.append("circle")
         .attr("class", "data-point")
-        .attr("cx", d=>x(d["% of female employees"]))
-        .attr("cy", d=>y(d.Activity)+y.bandwidth()/2)
-        .attr("r", d=>Math.sqrt(d["Number of female employees"])/50)
-        .attr("fill", d=>color(d.Continent))
+        .attr("cx", d => x(d["% of female employees"]))
+        .attr("cy", d => y(d.Activity) + y.bandwidth() / 2)
+        .attr("r", d => Math.max(3, Math.sqrt(d["Number of female employees"]) / 50))
+        .attr("fill", d => color(d.Continent))
         .attr("opacity", 0.7)
-        .on("mouseover", (event,d)=>{
-          d3.select("#tooltip").style("opacity",1)
-            .html(`<strong>${d.Country}</strong><br>${d.Activity}<br>% Female: ${(d["% of female employees"]*100).toFixed(1)}%<br>Female Employees: ${d["Number of female employees"].toLocaleString()}`);
+        .on("mouseover", (event, d) => {
+          d3.select(event.currentTarget)
+            .transition().duration(200)
+            .attr("r", Math.max(5, Math.sqrt(d["Number of female employees"]) / 30))
+            .attr("stroke", "black")
+            .attr("stroke-width", 2);
+
+          d3.select("#tooltip").style("opacity", 1)
+            .html(`<strong>${d.Country}</strong><br>${d.Activity}<br>% Female: ${(d["% of female employees"] * 100).toFixed(1)}%<br>Female Employees: ${d["Number of female employees"].toLocaleString()}`);
         })
-        .on("mousemove",(event)=>{
-          d3.select("#tooltip").style("left",(event.pageX+10)+"px").style("top",(event.pageY-28)+"px");
+        .on("mousemove", (event) => {
+          d3.select("#tooltip")
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY - 28) + "px");
         })
-        .on("mouseout",()=>d3.select("#tooltip").style("opacity",0)),
+        .on("mouseout", (event, d) => {
+          d3.select(event.currentTarget)
+            .transition().duration(200)
+            .attr("r", Math.max(3, Math.sqrt(d["Number of female employees"]) / 50))
+            .attr("stroke", "none");
+
+          d3.select("#tooltip").style("opacity", 0);
+        }),
       update => update.transition().duration(750)
-        .attr("cx", d=>x(d["% of female employees"]))
-        .attr("cy", d=>y(d.Activity)+y.bandwidth()/2)
-        .attr("r", d=>Math.sqrt(d["Number of female employees"])/50)
-        .attr("fill", d=>color(d.Continent)),
-      exit => exit.transition().duration(500).attr("r",0).remove()
+        .attr("cx", d => x(d["% of female employees"]))
+        .attr("cy", d => y(d.Activity) + y.bandwidth() / 2)
+        .attr("r", d => Math.max(3, Math.sqrt(d["Number of female employees"]) / 50))
+        .attr("fill", d => color(d.Continent)),
+      exit => exit.transition().duration(500).attr("r", 0).remove()
     );
   }
 
-  yearSlider.on("input", function(){
+  yearSlider.on("input", function() {
     const year = +this.value;
     yearValue.text(year);
     updateChart(year, d3.select("#levelSelect").property("value"));
   });
 
-  d3.select("#levelSelect").on("change", function(){
+  d3.select("#levelSelect").on("change", function() {
     updateChart(+yearSlider.property("value"), this.value);
+  });
+
+  d3.select("#transportFilter").on("change", function() {
+    updateChart(+yearSlider.property("value"), d3.select("#levelSelect").property("value"));
   });
 
   updateChart(+yearSlider.property("value"), d3.select("#levelSelect").property("value"));
