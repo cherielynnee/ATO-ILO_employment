@@ -210,7 +210,7 @@ d3.csv("merged_employees.csv").then(data => {
       .selectAll("text")
       .attr("fill", d=>{
         const nameOnly = d.replace(/^\d+\s+/,'');
-        return transportActivities.has(nameOnly)? "red":"black";
+        return transportActivities.has(nameOnly)? "blue":"black";
       })
       .attr("font-weight", d=>{
         const nameOnly = d.replace(/^\d+\s+/,'');
