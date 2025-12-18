@@ -36,17 +36,22 @@
   <label>
     <input type="checkbox" id="transportFilter"> Show only transport-related activities
   </label>
+  <label>
+  <input type="checkbox" id="atoFilter">
+  Show Asia-Pacific (ATO) economies only
+</label>
+
 </div>
 
-<div style="margin-top: 8px; font-size: 13px;">
-  <span style="color: blue; font-weight: bold;">Note: Transport-related activity are in bold blue text</span>.
-</div>
-  
 <div id="colorControls" style="margin: 15px 0;">
   <strong>Color by:</strong>
   <label><input type="radio" name="colorGroup" value="economy_incomegroup" checked> Income group</label>
   <label><input type="radio" name="colorGroup" value="economy_ato_group"> ATO group</label>
   <label><input type="radio" name="colorGroup" value="economy_ato_subgroup"> ATO subgroup</label>
+</div>
+
+<div style="margin-top: 8px; font-size: 13px;">
+  <span style="color: red; font-weight: bold;">Note: Transport-related activity are in bold red text</span>.
 </div>
 
 <div id="chart"></div>
@@ -123,9 +128,9 @@ const asiaSubgroupColorMap = {
   "South Asia": "#d62728",
   "South East Asia": "#9467bd",
   "Australia and New Zealand": "#8c564b",
-  "Europe": "gray",
-  "Americas": "gray",
-  "Africa": "gray",
+  "Europe": "white",
+  "Americas": "white",
+  "Africa": "white",
   "Asia - Others": "gray"
 };
 
@@ -186,11 +191,21 @@ d3.csv("merged_employees.csv").then(data => {
     svg.select(".x-axis").call(d3.axisTop(x).tickFormat(d3.format(".0%")));
     svg.select(".x-axis").attr("transform", `translate(0,0)`);
 
-    let filteredData = data.filter(d=>d.Year==selectedYear && d.Level==selectedLevel);
-    if(d3.select("#transportFilter").property("checked")) {
-      filteredData = filteredData.filter(d=>transportActivities.has(d.Activity));
-    }
+    let filteredData = data.filter(d =>
+  d.Year == selectedYear && d.Level == selectedLevel
+);
 
+if (d3.select("#transportFilter").property("checked")) {
+  filteredData = filteredData.filter(d =>
+    transportActivities.has(d.Activity)
+  );
+}
+
+if (d3.select("#atoFilter").property("checked")) {
+  filteredData = filteredData.filter(d =>
+    d.economy_ato_group === "Asia-Pacific (ATO)"
+  );
+}
     const avgByActivity = d3.rollup(filteredData, v => d3.mean(v, d=>d["% of female employees"]), d=>d.Activity);
     const orderedActivities = Array.from(avgByActivity).sort((a,b)=>a[1]-b[1]).map(d=>d[0]);
 
@@ -210,7 +225,7 @@ d3.csv("merged_employees.csv").then(data => {
       .selectAll("text")
       .attr("fill", d=>{
         const nameOnly = d.replace(/^\d+\s+/,'');
-        return transportActivities.has(nameOnly)? "blue":"black";
+        return transportActivities.has(nameOnly)? "red":"black";
       })
       .attr("font-weight", d=>{
         const nameOnly = d.replace(/^\d+\s+/,'');
@@ -273,6 +288,13 @@ d3.csv("merged_employees.csv").then(data => {
   d3.select("#transportFilter").on("change",function(){
     updateChart(+yearSlider.property("value"),d3.select("#levelSelect").property("value"));
   });
+
+  d3.select("#atoFilter").on("change", function() {
+  updateChart(
+    +yearSlider.property("value"),
+    d3.select("#levelSelect").property("value")
+  );
+});
 
   d3.selectAll('input[name="colorGroup"]').on('change',function(){
     currentColorGroup=this.value;
